@@ -1,25 +1,16 @@
 from pathlib import Path
+import re
 
 path = Path("app/src/main/java/com/ingwar/barabanchudes/MainActivity.java")
 text = path.read_text(encoding="utf-8")
 
-replacements = {
-    '''            hostSay(roundTitles[roundNumber - 1] + ".\\nПервый игрок, вращайте барабан!");''':
-    '''            hostSay("Первый игрок, вращайте\\nбарабан!");''',
+# Keep the original single-round flow instead of the invented tournament.
+text = text.replace(
+    'hostSay(roundTitles[roundNumber - 1] + ".\\nПервый игрок, вращайте барабан!");',
+    'hostSay("Первый игрок, вращайте\\nбарабан!");',
+)
 
-    '''        private void advanceAfterRound() {
-            if (state != ROUND_OVER) return;
-            if (roundWinner == 0 && roundNumber < 3) {
-                roundNumber++;
-                newRound();
-            } else if (roundWinner == 0) {
-                String prize = prizes[random.nextInt(prizes.length)];
-                endGame("Победа в финале!", "Вы прошли все три тура.\\nВаш приз — " + prize + ".");
-            } else {
-                endGame("Вы проиграли", names[roundWinner] + " угадал слово «" + answer + "».");
-            }
-        }''':
-    '''        private void advanceAfterRound() {
+new_advance = '''        private void advanceAfterRound() {
             if (state != ROUND_OVER) return;
             if (roundWinner == 0) {
                 String prize = prizes[random.nextInt(prizes.length)];
@@ -27,30 +18,35 @@ replacements = {
             } else {
                 endGame("Вы проиграли", names[roundWinner] + " угадал слово «" + answer + "».\\nЕго очки: " + scores[roundWinner] + ".");
             }
-        }''',
+        }'''
 
-    '''                drawClassicButton(canvas, prizeButton, "Забрать приз", true);
-                drawClassicButton(canvas, playButton, "Играть дальше", true);''':
-    '''                drawClassicButton(canvas, prizeButton, "Приз!", true);
-                drawClassicButton(canvas, playButton, "Играем", true);''',
+text, advance_count = re.subn(
+    r'^        private void advanceAfterRound\(\) \{.*?^        \}',
+    new_advance,
+    text,
+    count=1,
+    flags=re.MULTILINE | re.DOTALL,
+)
 
-    '''            paint.setTextSize(10);
-            canvas.drawText(roundTitles[roundNumber - 1] + " — тур " + roundNumber + " из 3", 448, 154, paint);''':
-    '''            paint.setTextSize(10);
-            canvas.drawText("Играют три участника", 448, 154, paint);''',
+text = text.replace('drawClassicButton(canvas, prizeButton, "Забрать приз", true);',
+                    'drawClassicButton(canvas, prizeButton, "Приз!", true);')
+text = text.replace('drawClassicButton(canvas, playButton, "Играть дальше", true);',
+                    'drawClassicButton(canvas, playButton, "Играем", true);')
+text = text.replace(
+    'canvas.drawText(roundTitles[roundNumber - 1] + " — тур " + roundNumber + " из 3", 448, 154, paint);',
+    'canvas.drawText("Играют три участника", 448, 154, paint);',
+)
+text = text.replace(
+    'hostSay(text + "\\nКоснитесь барабана.");',
+    'hostSay(text + "\\nКоснитесь барабана, чтобы получить приз.");',
+)
 
-    '''            hostSay(text + "\\nКоснитесь барабана.");''':
-    '''            hostSay(text + "\\nКоснитесь барабана, чтобы получить приз.");''',
-}
-
-for old, new in replacements.items():
-    if old not in text:
-        raise SystemExit(f"Expected source fragment not found:\n{old[:160]}")
-    text = text.replace(old, new, 1)
-
-# The Windows remake is a single three-player round. Remove the invented
-# tournament labels from active logic while leaving harmless fields intact.
-text = text.replace('versionName = "0.4"', 'versionName = "0.5"')
+if advance_count != 1:
+    raise SystemExit("advanceAfterRound method was not found")
+if 'Победа в финале!' in text or 'Вы прошли все три тура' in text:
+    raise SystemExit("Tournament ending is still present")
+if 'hostSay(roundTitles[roundNumber - 1]' in text:
+    raise SystemExit("Tournament greeting is still active")
 
 path.write_text(text, encoding="utf-8")
 print("Applied v0.5 single-round restoration")
