@@ -22,7 +22,8 @@ jobs:
       - name: Apply v0.4 game patches
         run: |
           git apply tools/v03-mainactivity.patch
-          git apply tools/v04-mainactivity.patch
+          git apply tools/v04-a.patch
+          git apply tools/v04-b.patch
           sed -i "s/versionCode 2/versionCode 4/; s/versionName '0.2-original-assets'/versionName '0.4-full-game-flow'/" app/build.gradle
 
       - name: Set up Java
