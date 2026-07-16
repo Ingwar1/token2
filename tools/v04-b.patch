@@ -1,0 +1,139 @@
+--- a/app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
++++ b/app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
+@@ -453,8 +559,8 @@
+             if (state == WAIT_LETTER && currentPlayer == 0) {
+                 drawAlphabet(canvas);
+             } else if (state == PRIZE_CHOICE && currentPlayer == 0) {
+-                drawClassicButton(canvas, prizeButton, "Приз!", true);
+-                drawClassicButton(canvas, playButton, "Играем", true);
++                drawClassicButton(canvas, prizeButton, "Забрать приз", true);
++                drawClassicButton(canvas, playButton, "Играть дальше", true);
+             } else {
+                 drawClassicButton(canvas, spinButton, "Вращать Барабан", currentPlayer == 0 && state == WAIT_SPIN);
+                 drawClassicButton(canvas, wordButton, "Сказать слово",
+@@ -463,6 +569,8 @@
+ 
+             if (state == WORD_INPUT) {
+                 drawWordInputDialog(canvas);
++            } else if (state == GAME_OVER) {
++                drawGameOverDialog(canvas);
+             }
+         }
+ 
+@@ -471,8 +579,7 @@
+             int start = (BOARD_SLOTS - length) / 2;
+             for (int slot = 0; slot < BOARD_SLOTS; slot++) {
+                 int answerIndex = slot - start;
+-                float left = 288 + slot * 24;
+-                RectF tile = new RectF(left, 72, left + 17, 89);
++                RectF tile = boardTileRect(slot);
+                 if (answerIndex < 0 || answerIndex >= answer.length()) {
+                     paint.setStyle(Paint.Style.FILL);
+                     paint.setColor(Color.rgb(238, 238, 238));
+@@ -487,6 +594,12 @@
+                     paint.setFakeBoldText(true);
+                     canvas.drawText(String.valueOf(answer.charAt(answerIndex)), tile.centerX(), 86, paint);
+                     paint.setFakeBoldText(false);
++                } else if (state == PLUS_CHOICE) {
++                    paint.setStyle(Paint.Style.STROKE);
++                    paint.setStrokeWidth(2);
++                    paint.setColor(Color.rgb(255, 180, 0));
++                    canvas.drawRect(tile, paint);
++                    paint.setStyle(Paint.Style.FILL);
+                 }
+             }
+ 
+@@ -495,6 +608,25 @@
+             paint.setTextSize(11);
+             paint.setFakeBoldText(false);
+             canvas.drawText("Тема игры: " + category, 448, 139, paint);
++            paint.setTextSize(10);
++            canvas.drawText(roundTitles[roundNumber - 1] + " — тур " + roundNumber + " из 3", 448, 154, paint);
++        }
++
++        private RectF boardTileRect(int slot) {
++            float left = 288 + slot * 24;
++            return new RectF(left, 72, left + 17, 89);
++        }
++
++        private int boardAnswerIndexAt(float x, float y) {
++            int length = Math.min(answer.length(), BOARD_SLOTS);
++            int start = (BOARD_SLOTS - length) / 2;
++            for (int slot = 0; slot < BOARD_SLOTS; slot++) {
++                if (boardTileRect(slot).contains(x, y)) {
++                    int index = slot - start;
++                    return index >= 0 && index < answer.length() ? index : -1;
++                }
++            }
++            return -1;
+         }
+ 
+         private void drawLabels(Canvas canvas) {
+@@ -630,6 +762,40 @@
+             drawClassicButton(canvas, new RectF(684, 422, 728, 456), "Отмена", true);
+         }
+ 
++        private void drawGameOverDialog(Canvas canvas) {
++            paint.setStyle(Paint.Style.FILL);
++            paint.setColor(Color.argb(150, 0, 0, 0));
++            canvas.drawRect(0, 0, WORLD_W, WORLD_H, paint);
++
++            RectF dialog = new RectF(230, 145, 666, 455);
++            drawRaisedPanel(canvas, dialog, Color.rgb(212, 208, 200));
++
++            paint.setStyle(Paint.Style.FILL);
++            paint.setColor(Color.rgb(0, 0, 128));
++            canvas.drawRect(dialog.left + 3, dialog.top + 3, dialog.right - 3, dialog.top + 29, paint);
++            paint.setColor(Color.WHITE);
++            paint.setTextAlign(Paint.Align.LEFT);
++            paint.setTextSize(14);
++            paint.setFakeBoldText(true);
++            canvas.drawText("Поле чудес", dialog.left + 11, dialog.top + 21, paint);
++
++            paint.setColor(Color.BLACK);
++            paint.setTextAlign(Paint.Align.CENTER);
++            paint.setTextSize(23);
++            canvas.drawText(gameOverTitle, dialog.centerX(), dialog.top + 82, paint);
++
++            paint.setFakeBoldText(false);
++            paint.setTextSize(14);
++            String[] lines = gameOverDetail.split("\\n");
++            float y = dialog.top + 124;
++            for (String line : lines) {
++                canvas.drawText(line, dialog.centerX(), y, paint);
++                y += 24;
++            }
++
++            drawClassicButton(canvas, newGameButton, "Новая игра", true);
++        }
++
+         private void drawRaisedPanel(Canvas canvas, RectF rect, int fillColor) {
+             paint.setStyle(Paint.Style.FILL);
+             paint.setColor(fillColor);
+@@ -712,15 +878,25 @@
+             float y = (event.getY() - dy) / scale;
+             if (x < 0 || y < 0 || x > WORLD_W || y > WORLD_H) return true;
+ 
++            if (state == GAME_OVER) {
++                if (newGameButton.contains(x, y)) newGame();
++                return true;
++            }
+             if (state == WORD_INPUT) {
+                 return handleWordInputTouch(x, y);
+             }
+             if (state == ROUND_OVER && wheelRect.contains(x, y)) {
+-                newRound();
++                advanceAfterRound();
+                 return true;
+             }
+             if (currentPlayer != 0) return true;
+ 
++            if (state == PLUS_CHOICE) {
++                int answerIndex = boardAnswerIndexAt(x, y);
++                if (answerIndex >= 0) openPlusLetterAt(answerIndex);
++                return true;
++            }
++
+             if (state == PRIZE_CHOICE) {
+                 if (prizeButton.contains(x, y)) choosePrize();
+                 else if (playButton.contains(x, y)) keepPlaying();
