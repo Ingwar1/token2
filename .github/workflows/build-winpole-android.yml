@@ -24,7 +24,7 @@ jobs:
           cat tools/v04src/part*.b64 | base64 --decode > app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
           test -s app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
           grep -q 'PLUS_CHOICE' app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
-          python tools/apply_v05.py
+          python3 tools/apply_v05.py
           sed -i "s/versionCode 2/versionCode 5/; s/versionName '0.2-original-assets'/versionName '0.5-single-round-restoration'/" app/build.gradle
 
       - name: Set up Java
