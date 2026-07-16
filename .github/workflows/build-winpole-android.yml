@@ -19,11 +19,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Apply v0.4 game patches
+      - name: Install v0.4 game source
         run: |
-          git apply tools/v03-mainactivity.patch
-          git apply tools/v04-a.patch
-          git apply tools/v04-b.patch
+          cat tools/v04src/part*.b64 | base64 --decode > app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
+          test -s app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
+          grep -q 'PLUS_CHOICE' app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
           sed -i "s/versionCode 2/versionCode 4/; s/versionName '0.2-original-assets'/versionName '0.4-full-game-flow'/" app/build.gradle
 
       - name: Set up Java
