@@ -1,0 +1,253 @@
+--- a/app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
++++ b/app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
+@@ -1,7 +1,6 @@
+ package com.ingwar.barabanchudes;
+ 
+ import android.app.Activity;
+-import android.app.AlertDialog;
+ import android.graphics.Bitmap;
+ import android.graphics.BitmapFactory;
+ import android.graphics.Canvas;
+@@ -11,13 +10,10 @@
+ import android.os.Bundle;
+ import android.os.Handler;
+ import android.os.Looper;
+-import android.text.InputType;
+ import android.view.MotionEvent;
+ import android.view.View;
+ import android.view.Window;
+ import android.view.WindowManager;
+-import android.widget.EditText;
+-import android.widget.Toast;
+ 
+ import java.io.BufferedReader;
+ import java.io.InputStreamReader;
+@@ -65,8 +61,10 @@
+         private static final int WAIT_LETTER = 2;
+         private static final int PRIZE_CHOICE = 3;
+         private static final int ROUND_OVER = 4;
++        private static final int WORD_INPUT = 5;
+ 
+         private static final String ALPHABET = "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
++        private static final String[] WORD_KEY_ROWS = {"ЙЦУКЕНГШЩЗХ", "ФЫВАПРОЛДЖЭ", "ЯЧСМИТЬБЮ"};
+         private static final int BOARD_SLOTS = 14;
+ 
+         private final Paint paint = new Paint();
+@@ -109,6 +107,8 @@
+         private String hostText = "";
+         private boolean hostTalking = false;
+         private boolean alive = true;
++        private String wordInput = "";
++        private int wordInputReturnState = WAIT_SPIN;
+ 
+         GameView() {
+             super(MainActivity.this);
+@@ -319,35 +319,33 @@
+ 
+         private void guessWord() {
+             if (currentPlayer != 0 || (state != WAIT_SPIN && state != WAIT_LETTER)) return;
+-            EditText input = new EditText(MainActivity.this);
+-            input.setSingleLine(true);
+-            input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+-            input.setTextSize(22);
+-            input.setHint("Введите слово");
+-
+-            AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+-                    .setTitle("Сказать слово")
+-                    .setView(input)
+-                    .setNegativeButton("Отмена", null)
+-                    .setPositiveButton("Сказать", null)
+-                    .create();
+-            dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+-                String value = input.getText().toString().trim().toUpperCase(new Locale("ru"));
+-                if (value.isEmpty()) {
+-                    Toast.makeText(MainActivity.this, "Введите слово", Toast.LENGTH_SHORT).show();
+-                    return;
+-                }
+-                dialog.dismiss();
+-                if (normalizeWord(value).equals(normalizeWord(answer))) {
+-                    for (int i = 0; i < opened.length; i++) opened[i] = true;
+-                    scores[currentPlayer] += 100;
+-                    finishRound("Вы угадали слово!");
+-                } else {
+-                    hostSay("Неправильно!");
+-                    handler.postDelayed(this::nextTurn, 1000);
+-                }
+-            }));
+-            dialog.show();
++            wordInputReturnState = state;
++            wordInput = "";
++            state = WORD_INPUT;
++            invalidate();
++        }
++
++        private void cancelWordInput() {
++            if (state != WORD_INPUT) return;
++            state = wordInputReturnState;
++            wordInput = "";
++            invalidate();
++        }
++
++        private void submitWordInput() {
++            if (state != WORD_INPUT || wordInput.isEmpty()) return;
++            String value = wordInput.trim().toUpperCase(new Locale("ru"));
++            wordInput = "";
++            if (normalizeWord(value).equals(normalizeWord(answer))) {
++                for (int i = 0; i < opened.length; i++) opened[i] = true;
++                scores[currentPlayer] += 100;
++                finishRound("Вы угадали слово!");
++            } else {
++                state = wordInputReturnState;
++                hostSay("Неправильно!");
++                handler.postDelayed(this::nextTurn, 1000);
++            }
++            invalidate();
+         }
+ 
+         private String normalizeWord(String value) {
+@@ -462,6 +460,10 @@
+                 drawClassicButton(canvas, wordButton, "Сказать слово",
+                         currentPlayer == 0 && (state == WAIT_SPIN || state == WAIT_LETTER));
+             }
++
++            if (state == WORD_INPUT) {
++                drawWordInputDialog(canvas);
++            }
+         }
+ 
+         private void drawBoard(Canvas canvas) {
+@@ -582,6 +584,124 @@
+             return new RectF(left, top, left + width, top + 27);
+         }
+ 
++        private void drawWordInputDialog(Canvas canvas) {
++            paint.setStyle(Paint.Style.FILL);
++            paint.setColor(Color.argb(125, 0, 0, 0));
++            canvas.drawRect(0, 0, WORLD_W, WORLD_H, paint);
++
++            RectF dialog = new RectF(155, 105, 741, 471);
++            drawRaisedPanel(canvas, dialog, Color.rgb(212, 208, 200));
++
++            paint.setStyle(Paint.Style.FILL);
++            paint.setColor(Color.rgb(0, 0, 128));
++            canvas.drawRect(dialog.left + 3, dialog.top + 3, dialog.right - 3, dialog.top + 27, paint);
++            paint.setColor(Color.WHITE);
++            paint.setTextAlign(Paint.Align.LEFT);
++            paint.setTextSize(13);
++            paint.setFakeBoldText(true);
++            canvas.drawText("Сказать слово", dialog.left + 10, dialog.top + 20, paint);
++            paint.setFakeBoldText(false);
++
++            paint.setColor(Color.BLACK);
++            paint.setTextSize(12);
++            canvas.drawText("Введите слово:", dialog.left + 20, dialog.top + 53, paint);
++
++            RectF input = new RectF(dialog.left + 20, dialog.top + 63, dialog.right - 20, dialog.top + 101);
++            drawSunkenPanel(canvas, input, Color.WHITE);
++            paint.setColor(Color.BLACK);
++            paint.setTextAlign(Paint.Align.LEFT);
++            paint.setTextSize(21);
++            String cursor = System.currentTimeMillis() / 500 % 2 == 0 ? "|" : "";
++            canvas.save();
++            canvas.clipRect(input.left + 7, input.top + 2, input.right - 7, input.bottom - 2);
++            canvas.drawText(wordInput + cursor,
++                    input.left + 8, input.centerY() - (paint.ascent() + paint.descent()) / 2f, paint);
++            canvas.restore();
++
++            for (int row = 0; row < WORD_KEY_ROWS.length; row++) {
++                String keys = WORD_KEY_ROWS[row];
++                for (int col = 0; col < keys.length(); col++) {
++                    drawClassicButton(canvas, wordKeyRect(row, col), String.valueOf(keys.charAt(col)), true);
++                }
++            }
++
++            drawClassicButton(canvas, new RectF(168, 422, 272, 456), "← Стереть", !wordInput.isEmpty());
++            drawClassicButton(canvas, new RectF(588, 422, 678, 456), "Сказать", !wordInput.isEmpty());
++            drawClassicButton(canvas, new RectF(684, 422, 728, 456), "Отмена", true);
++        }
++
++        private void drawRaisedPanel(Canvas canvas, RectF rect, int fillColor) {
++            paint.setStyle(Paint.Style.FILL);
++            paint.setColor(fillColor);
++            canvas.drawRect(rect, paint);
++            paint.setStyle(Paint.Style.STROKE);
++            paint.setStrokeWidth(2);
++            paint.setColor(Color.WHITE);
++            canvas.drawLine(rect.left, rect.top, rect.right, rect.top, paint);
++            canvas.drawLine(rect.left, rect.top, rect.left, rect.bottom, paint);
++            paint.setColor(Color.rgb(64, 64, 64));
++            canvas.drawLine(rect.right, rect.top, rect.right, rect.bottom, paint);
++            canvas.drawLine(rect.left, rect.bottom, rect.right, rect.bottom, paint);
++            paint.setStyle(Paint.Style.FILL);
++        }
++
++        private void drawSunkenPanel(Canvas canvas, RectF rect, int fillColor) {
++            paint.setStyle(Paint.Style.FILL);
++            paint.setColor(fillColor);
++            canvas.drawRect(rect, paint);
++            paint.setStyle(Paint.Style.STROKE);
++            paint.setStrokeWidth(2);
++            paint.setColor(Color.rgb(64, 64, 64));
++            canvas.drawLine(rect.left, rect.top, rect.right, rect.top, paint);
++            canvas.drawLine(rect.left, rect.top, rect.left, rect.bottom, paint);
++            paint.setColor(Color.WHITE);
++            canvas.drawLine(rect.right, rect.top, rect.right, rect.bottom, paint);
++            canvas.drawLine(rect.left, rect.bottom, rect.right, rect.bottom, paint);
++            paint.setStyle(Paint.Style.FILL);
++        }
++
++        private RectF wordKeyRect(int row, int col) {
++            String keys = WORD_KEY_ROWS[row];
++            float keyW = 46f;
++            float gap = 4f;
++            float total = keys.length() * keyW + (keys.length() - 1) * gap;
++            float left = (WORLD_W - total) / 2f + col * (keyW + gap);
++            float top = 231f + row * 59f;
++            return new RectF(left, top, left + keyW, top + 43f);
++        }
++
++        private boolean handleWordInputTouch(float x, float y) {
++            for (int row = 0; row < WORD_KEY_ROWS.length; row++) {
++                String keys = WORD_KEY_ROWS[row];
++                for (int col = 0; col < keys.length(); col++) {
++                    if (wordKeyRect(row, col).contains(x, y)) {
++                        if (wordInput.length() < 18) {
++                            wordInput += keys.charAt(col);
++                            invalidate();
++                        }
++                        return true;
++                    }
++                }
++            }
++
++            if (new RectF(168, 422, 272, 456).contains(x, y)) {
++                if (!wordInput.isEmpty()) {
++                    wordInput = wordInput.substring(0, wordInput.length() - 1);
++                    invalidate();
++                }
++                return true;
++            }
++            if (new RectF(588, 422, 678, 456).contains(x, y)) {
++                submitWordInput();
++                return true;
++            }
++            if (new RectF(684, 422, 728, 456).contains(x, y)) {
++                cancelWordInput();
++                return true;
++            }
++            return true;
++        }
++
+         @Override
+         public boolean onTouchEvent(MotionEvent event) {
+             if (event.getAction() != MotionEvent.ACTION_UP) return true;
+@@ -592,6 +712,9 @@
+             float y = (event.getY() - dy) / scale;
+             if (x < 0 || y < 0 || x > WORLD_W || y > WORLD_H) return true;
+ 
++            if (state == WORD_INPUT) {
++                return handleWordInputTouch(x, y);
++            }
+             if (state == ROUND_OVER && wheelRect.contains(x, y)) {
+                 newRound();
+                 return true;

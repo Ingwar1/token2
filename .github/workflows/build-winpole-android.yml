@@ -1,0 +1,74 @@
+name: Build WinPole Android APK
+
+on:
+  push:
+    branches: [winpole-android-build]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Decode v0.4 source
+        run: cat tools/v04src/part*.b64 | base64 --decode > app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
+
+      - name: Verify decoded source
+        run: |
+          test -s app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
+          grep -q 'PLUS_CHOICE' app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
+
+      - name: Apply v0.5 patch
+        run: python tools/apply_v05.py
+
+      - name: Set v0.5 version
+        run: sed -i "s/versionCode 2/versionCode 5/; s/versionName '0.2-original-assets'/versionName '0.5-single-round-restoration'/" app/build.gradle
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install image extractor
+        run: python -m pip install --disable-pip-version-check pillow
+
+      - name: Download original Windows game
+        run: |
+          curl --fail --location --retry 3 --insecure \
+            --user-agent 'Mozilla/5.0' \
+            'https://16-bits.ru/winpole/winpole-beta2.zip' \
+            --output /tmp/winpole-beta2.zip
+          unzip -t /tmp/winpole-beta2.zip
+
+      - name: Extract original visual assets
+        run: python tools/extract_assets.py /tmp/winpole-beta2.zip .
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: pole-chudes-android-apk-v05
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

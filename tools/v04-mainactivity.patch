@@ -1,0 +1,407 @@
+--- a/app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
++++ b/app/src/main/java/com/ingwar/barabanchudes/MainActivity.java
+@@ -62,6 +62,8 @@
+         private static final int PRIZE_CHOICE = 3;
+         private static final int ROUND_OVER = 4;
+         private static final int WORD_INPUT = 5;
++        private static final int PLUS_CHOICE = 6;
++        private static final int GAME_OVER = 7;
+ 
+         private static final String ALPHABET = "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
+         private static final String[] WORD_KEY_ROWS = {"ЙЦУКЕНГШЩЗХ", "ФЫВАПРОЛДЖЭ", "ЯЧСМИТЬБЮ"};
+@@ -79,13 +81,18 @@
+         private final Bitmap[] wheelFrames = new Bitmap[16];
+ 
+         private final String[] names = {"Первый игрок", "Сникерс", "Снегирь"};
++        private final String[] roundTitles = {"Четвертьфинал", "Полуфинал", "Финал"};
++        private final String[] prizes = {
++                "рулон туалетной бумаги", "подтяжки для носков", "набор прищепок",
++                "банка сгущёнки", "электрическая мухобойка", "чемодан без ручки"
++        };
+         private final int[] scores = new int[3];
+ 
+         // What the fixed orange pointer indicates in each original wheel frame.
+         private final String[] frameSectors = {
+-                "10", "ПОДАРОК", "20", "x4",
++                "10", "0", "20", "x4",
+                 "5", "x2", "15", "БАНКРОТ",
+-                "20", "+", "5", "ПОДАРОК",
++                "20", "+", "5", "0",
+                 "10", "25", "15", "ПРИЗ"
+         };
+ 
+@@ -94,6 +101,7 @@
+         private final RectF prizeButton = new RectF(20, 448, 112, 480);
+         private final RectF playButton = new RectF(114, 448, 211, 480);
+         private final RectF wheelRect = new RectF(278, 235, 502, 421);
++        private final RectF newGameButton = new RectF(350, 398, 546, 438);
+ 
+         private String category = "";
+         private String answer = "";
+@@ -109,6 +117,11 @@
+         private boolean alive = true;
+         private String wordInput = "";
+         private int wordInputReturnState = WAIT_SPIN;
++        private int roundNumber = 1;
++        private int roundWinner = -1;
++        private String gameOverTitle = "";
++        private String gameOverDetail = "";
++        private final Set<Integer> usedWordIndexes = new HashSet<>();
+ 
+         GameView() {
+             super(MainActivity.this);
+@@ -153,21 +166,35 @@
+ 
+         private void newGame() {
+             handler.removeCallbacksAndMessages(null);
+-            for (int i = 0; i < scores.length; i++) scores[i] = 0;
++            usedWordIndexes.clear();
++            roundNumber = 1;
++            roundWinner = -1;
++            gameOverTitle = "";
++            gameOverDetail = "";
+             currentPlayer = 0;
+             wheelFrame = random.nextInt(wheelFrames.length);
+             newRound();
+         }
+ 
+         private void newRound() {
+-            WordEntry entry = words.get(random.nextInt(words.size()));
++            for (int i = 0; i < scores.length; i++) scores[i] = 0;
++
++            int index;
++            if (usedWordIndexes.size() >= words.size()) usedWordIndexes.clear();
++            do {
++                index = random.nextInt(words.size());
++            } while (usedWordIndexes.contains(index) && usedWordIndexes.size() < words.size());
++            usedWordIndexes.add(index);
++
++            WordEntry entry = words.get(index);
+             category = entry.category;
+             answer = entry.answer.toUpperCase(new Locale("ru"));
+             opened = new boolean[answer.length()];
+             usedLetters.clear();
+             currentPlayer = 0;
++            roundWinner = -1;
+             state = WAIT_SPIN;
+-            hostSay("Первый игрок, вращайте\nбарабан!");
++            hostSay(roundTitles[roundNumber - 1] + ".\nПервый игрок, вращайте барабан!");
+             invalidate();
+         }
+ 
+@@ -220,19 +247,28 @@
+         private void finishSpin() {
+             String sector = frameSectors[wheelFrame];
+             switch (sector) {
++                case "0":
++                    hostSay("Переход хода!");
++                    handler.postDelayed(this::nextTurn, 1000);
++                    break;
+                 case "БАНКРОТ":
+                     scores[currentPlayer] = 0;
+                     hostSay("Банкрот! Все очки\nсгорели!");
+                     handler.postDelayed(this::nextTurn, 1300);
+                     break;
+                 case "+":
+-                    int revealed = revealRandomLetter();
+-                    hostSay(revealed > 0 ? "Откройте любую букву!" : "Все буквы уже открыты!");
+-                    if (isSolved()) {
+-                        finishRound(names[currentPlayer] + " победил!");
++                    if (currentPlayer == 0) {
++                        state = PLUS_CHOICE;
++                        hostSay("Выберите любую\nзакрытую букву.");
+                     } else {
+-                        state = WAIT_SPIN;
+-                        scheduleBot();
++                        int revealed = revealRandomLetter();
++                        hostSay(revealed > 0 ? "Открываем букву!" : "Все буквы уже открыты!");
++                        if (isSolved()) {
++                            finishRound(names[currentPlayer] + " победил!");
++                        } else {
++                            state = WAIT_SPIN;
++                            scheduleBot();
++                        }
+                     }
+                     break;
+                 case "x2":
+@@ -248,14 +284,13 @@
+                     scheduleBot();
+                     break;
+                 case "ПРИЗ":
+-                case "ПОДАРОК":
+                     if (currentPlayer == 0) {
+                         state = PRIZE_CHOICE;
+                         hostSay("Приз или играем дальше?");
+                     } else {
+-                        scores[currentPlayer] += 25;
+-                        state = WAIT_SPIN;
+-                        hostSay(names[currentPlayer] + " выбирает игру!");
++                        sectorPoints = 0;
++                        state = WAIT_LETTER;
++                        hostSay(names[currentPlayer] + " выбирает игру!\nНазовите букву.");
+                         scheduleBot();
+                     }
+                     break;
+@@ -270,16 +305,36 @@
+         }
+ 
+         private void choosePrize() {
+-            scores[currentPlayer] += 100;
+-            state = WAIT_SPIN;
+-            hostSay("Ваш приз — 100 очков!");
+-            invalidate();
++            String prize = prizes[random.nextInt(prizes.length)];
++            endGame("Вы забрали приз!", "Ваш приз — " + prize + ".\nИгра окончена.");
+         }
+ 
+         private void keepPlaying() {
+             state = WAIT_LETTER;
+-            sectorPoints = 25;
+-            hostSay("Играем! Назовите букву.");
++            sectorPoints = 0;
++            hostSay("Играем дальше!\nНазовите букву.");
++            invalidate();
++        }
++
++        private void openPlusLetterAt(int answerIndex) {
++            if (state != PLUS_CHOICE || answerIndex < 0 || answerIndex >= answer.length()) return;
++            if (opened[answerIndex]) {
++                hostSay("Эта буква уже открыта!");
++                return;
++            }
++
++            char selected = answer.charAt(answerIndex);
++            usedLetters.add(selected);
++            for (int i = 0; i < answer.length(); i++) {
++                if (answer.charAt(i) == selected) opened[i] = true;
++            }
++
++            if (isSolved()) {
++                finishRound(names[currentPlayer] + " открыл слово!");
++            } else {
++                state = WAIT_SPIN;
++                hostSay("Буква «" + selected + "» открыта!");
++            }
+             invalidate();
+         }
+ 
+@@ -377,13 +432,35 @@
+         }
+ 
+         private void finishRound(String text) {
++            roundWinner = currentPlayer;
+             state = ROUND_OVER;
+             hostSay(text + "\nКоснитесь барабана.");
+             invalidate();
+         }
+ 
++        private void advanceAfterRound() {
++            if (state != ROUND_OVER) return;
++            if (roundWinner == 0 && roundNumber < 3) {
++                roundNumber++;
++                newRound();
++            } else if (roundWinner == 0) {
++                String prize = prizes[random.nextInt(prizes.length)];
++                endGame("Победа в финале!", "Вы прошли все три тура.\nВаш приз — " + prize + ".");
++            } else {
++                endGame("Вы проиграли", names[roundWinner] + " угадал слово «" + answer + "».");
++            }
++        }
++
++        private void endGame(String title, String detail) {
++            handler.removeCallbacksAndMessages(null);
++            gameOverTitle = title;
++            gameOverDetail = detail;
++            state = GAME_OVER;
++            invalidate();
++        }
++
+         private void nextTurn() {
+-            if (state == ROUND_OVER || !alive) return;
++            if (state == ROUND_OVER || state == GAME_OVER || !alive) return;
+             currentPlayer = (currentPlayer + 1) % names.length;
+             state = WAIT_SPIN;
+             hostSay(names[currentPlayer] + ", вращайте\nбарабан!");
+@@ -392,14 +469,43 @@
+         }
+ 
+         private void scheduleBot() {
+-            if (currentPlayer == 0 || state == ROUND_OVER || !alive) return;
++            if (currentPlayer == 0 || state == ROUND_OVER || state == GAME_OVER || !alive) return;
+             if (state == WAIT_SPIN) {
+-                handler.postDelayed(this::spinWheel, 850);
++                if (shouldBotGuessWord()) {
++                    handler.postDelayed(this::botGuessWord, 950);
++                } else {
++                    handler.postDelayed(this::spinWheel, 850);
++                }
+             } else if (state == WAIT_LETTER) {
+                 handler.postDelayed(this::botLetter, 850);
+             }
+         }
+ 
++        private boolean shouldBotGuessWord() {
++            int hidden = 0;
++            for (boolean item : opened) if (!item) hidden++;
++            if (hidden == 0) return false;
++            if (hidden <= 2) return random.nextInt(100) < 45;
++            return hidden <= Math.max(3, answer.length() / 3) && random.nextInt(100) < 18;
++        }
++
++        private void botGuessWord() {
++            if (currentPlayer == 0 || state != WAIT_SPIN) return;
++            int hidden = 0;
++            for (boolean item : opened) if (!item) hidden++;
++            boolean correct = hidden <= 2 ? random.nextInt(100) < 72 : random.nextInt(100) < 42;
++            if (correct) {
++                hostSay(names[currentPlayer] + ":\n«" + answer + "»!");
++                handler.postDelayed(() -> {
++                    for (int i = 0; i < opened.length; i++) opened[i] = true;
++                    finishRound(names[currentPlayer] + " угадал слово!");
++                }, 850);
++            } else {
++                hostSay(names[currentPlayer] + "\nне угадал слово!");
++                handler.postDelayed(this::nextTurn, 1000);
++            }
++        }
++
+         private void botLetter() {
+             if (currentPlayer == 0 || state != WAIT_LETTER) return;
+             List<Character> hidden = new ArrayList<>();
+@@ -453,8 +559,8 @@
+             if (state == WAIT_LETTER && currentPlayer == 0) {
+                 drawAlphabet(canvas);
+             } else if (state == PRIZE_CHOICE && currentPlayer == 0) {
+-                drawClassicButton(canvas, prizeButton, "Приз!", true);
+-                drawClassicButton(canvas, playButton, "Играем", true);
++                drawClassicButton(canvas, prizeButton, "Забрать приз", true);
++                drawClassicButton(canvas, playButton, "Играть дальше", true);
+             } else {
+                 drawClassicButton(canvas, spinButton, "Вращать Барабан", currentPlayer == 0 && state == WAIT_SPIN);
+                 drawClassicButton(canvas, wordButton, "Сказать слово",
+@@ -463,6 +569,8 @@
+ 
+             if (state == WORD_INPUT) {
+                 drawWordInputDialog(canvas);
++            } else if (state == GAME_OVER) {
++                drawGameOverDialog(canvas);
+             }
+         }
+ 
+@@ -471,8 +579,7 @@
+             int start = (BOARD_SLOTS - length) / 2;
+             for (int slot = 0; slot < BOARD_SLOTS; slot++) {
+                 int answerIndex = slot - start;
+-                float left = 288 + slot * 24;
+-                RectF tile = new RectF(left, 72, left + 17, 89);
++                RectF tile = boardTileRect(slot);
+                 if (answerIndex < 0 || answerIndex >= answer.length()) {
+                     paint.setStyle(Paint.Style.FILL);
+                     paint.setColor(Color.rgb(238, 238, 238));
+@@ -487,6 +594,12 @@
+                     paint.setFakeBoldText(true);
+                     canvas.drawText(String.valueOf(answer.charAt(answerIndex)), tile.centerX(), 86, paint);
+                     paint.setFakeBoldText(false);
++                } else if (state == PLUS_CHOICE) {
++                    paint.setStyle(Paint.Style.STROKE);
++                    paint.setStrokeWidth(2);
++                    paint.setColor(Color.rgb(255, 180, 0));
++                    canvas.drawRect(tile, paint);
++                    paint.setStyle(Paint.Style.FILL);
+                 }
+             }
+ 
+@@ -495,6 +608,25 @@
+             paint.setTextSize(11);
+             paint.setFakeBoldText(false);
+             canvas.drawText("Тема игры: " + category, 448, 139, paint);
++            paint.setTextSize(10);
++            canvas.drawText(roundTitles[roundNumber - 1] + " — тур " + roundNumber + " из 3", 448, 154, paint);
++        }
++
++        private RectF boardTileRect(int slot) {
++            float left = 288 + slot * 24;
++            return new RectF(left, 72, left + 17, 89);
++        }
++
++        private int boardAnswerIndexAt(float x, float y) {
++            int length = Math.min(answer.length(), BOARD_SLOTS);
++            int start = (BOARD_SLOTS - length) / 2;
++            for (int slot = 0; slot < BOARD_SLOTS; slot++) {
++                if (boardTileRect(slot).contains(x, y)) {
++                    int index = slot - start;
++                    return index >= 0 && index < answer.length() ? index : -1;
++                }
++            }
++            return -1;
+         }
+ 
+         private void drawLabels(Canvas canvas) {
+@@ -630,6 +762,40 @@
+             drawClassicButton(canvas, new RectF(684, 422, 728, 456), "Отмена", true);
+         }
+ 
++        private void drawGameOverDialog(Canvas canvas) {
++            paint.setStyle(Paint.Style.FILL);
++            paint.setColor(Color.argb(150, 0, 0, 0));
++            canvas.drawRect(0, 0, WORLD_W, WORLD_H, paint);
++
++            RectF dialog = new RectF(230, 145, 666, 455);
++            drawRaisedPanel(canvas, dialog, Color.rgb(212, 208, 200));
++
++            paint.setStyle(Paint.Style.FILL);
++            paint.setColor(Color.rgb(0, 0, 128));
++            canvas.drawRect(dialog.left + 3, dialog.top + 3, dialog.right - 3, dialog.top + 29, paint);
++            paint.setColor(Color.WHITE);
++            paint.setTextAlign(Paint.Align.LEFT);
++            paint.setTextSize(14);
++            paint.setFakeBoldText(true);
++            canvas.drawText("Поле чудес", dialog.left + 11, dialog.top + 21, paint);
++
++            paint.setColor(Color.BLACK);
++            paint.setTextAlign(Paint.Align.CENTER);
++            paint.setTextSize(23);
++            canvas.drawText(gameOverTitle, dialog.centerX(), dialog.top + 82, paint);
++
++            paint.setFakeBoldText(false);
++            paint.setTextSize(14);
++            String[] lines = gameOverDetail.split("\\n");
++            float y = dialog.top + 124;
++            for (String line : lines) {
++                canvas.drawText(line, dialog.centerX(), y, paint);
++                y += 24;
++            }
++
++            drawClassicButton(canvas, newGameButton, "Новая игра", true);
++        }
++
+         private void drawRaisedPanel(Canvas canvas, RectF rect, int fillColor) {
+             paint.setStyle(Paint.Style.FILL);
+             paint.setColor(fillColor);
+@@ -712,15 +878,25 @@
+             float y = (event.getY() - dy) / scale;
+             if (x < 0 || y < 0 || x > WORLD_W || y > WORLD_H) return true;
+ 
++            if (state == GAME_OVER) {
++                if (newGameButton.contains(x, y)) newGame();
++                return true;
++            }
+             if (state == WORD_INPUT) {
+                 return handleWordInputTouch(x, y);
+             }
+             if (state == ROUND_OVER && wheelRect.contains(x, y)) {
+-                newRound();
++                advanceAfterRound();
+                 return true;
+             }
+             if (currentPlayer != 0) return true;
+ 
++            if (state == PLUS_CHOICE) {
++                int answerIndex = boardAnswerIndexAt(x, y);
++                if (answerIndex >= 0) openPlusLetterAt(answerIndex);
++                return true;
++            }
++
+             if (state == PRIZE_CHOICE) {
+                 if (prizeButton.contains(x, y)) choosePrize();
+                 else if (playButton.contains(x, y)) keepPlaying();
