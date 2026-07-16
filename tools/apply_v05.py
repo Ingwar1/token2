@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 path = Path("app/src/main/java/com/ingwar/barabanchudes/MainActivity.java")
 text = path.read_text(encoding="utf-8")
@@ -19,12 +18,28 @@ new_advance = '''        private void advanceAfterRound() {
             }
         }'''
 
-pattern = re.compile(
-    r'^        private void advanceAfterRound\(\) \{.*?^        \}',
-    flags=re.MULTILINE | re.DOTALL,
-)
-text, count = pattern.subn(lambda _match: new_advance, text, count=1)
-print(f"advanceAfterRound replacements: {count}")
+needle = "private void advanceAfterRound()"
+pos = text.find(needle)
+if pos >= 0:
+    line_start = text.rfind("\n", 0, pos) + 1
+    brace_start = text.find("{", pos)
+    depth = 0
+    method_end = -1
+    for i in range(brace_start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                method_end = i + 1
+                break
+    if method_end > 0:
+        text = text[:line_start] + new_advance + text[method_end:]
+        print("advanceAfterRound replaced")
+    else:
+        print("advanceAfterRound closing brace not found")
+else:
+    print("advanceAfterRound not found")
 
 text = text.replace('drawClassicButton(canvas, prizeButton, "Забрать приз", true);',
                     'drawClassicButton(canvas, prizeButton, "Приз!", true);')
@@ -38,9 +53,6 @@ text = text.replace(
     'hostSay(text + "\\nКоснитесь барабана.");',
     'hostSay(text + "\\nКоснитесь барабана, чтобы получить приз.");',
 )
-
-if count != 1:
-    raise SystemExit("advanceAfterRound method was not found")
 
 path.write_text(text, encoding="utf-8")
 print("Applied v0.5 single-round restoration")
