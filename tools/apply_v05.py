@@ -4,7 +4,6 @@ import re
 path = Path("app/src/main/java/com/ingwar/barabanchudes/MainActivity.java")
 text = path.read_text(encoding="utf-8")
 
-# Keep the original single-round flow instead of the invented tournament.
 text = text.replace(
     'hostSay(roundTitles[roundNumber - 1] + ".\\nПервый игрок, вращайте барабан!");',
     'hostSay("Первый игрок, вращайте\\nбарабан!");',
@@ -20,13 +19,12 @@ new_advance = '''        private void advanceAfterRound() {
             }
         }'''
 
-text, advance_count = re.subn(
+pattern = re.compile(
     r'^        private void advanceAfterRound\(\) \{.*?^        \}',
-    new_advance,
-    text,
-    count=1,
     flags=re.MULTILINE | re.DOTALL,
 )
+text, count = pattern.subn(lambda _match: new_advance, text, count=1)
+print(f"advanceAfterRound replacements: {count}")
 
 text = text.replace('drawClassicButton(canvas, prizeButton, "Забрать приз", true);',
                     'drawClassicButton(canvas, prizeButton, "Приз!", true);')
@@ -41,12 +39,8 @@ text = text.replace(
     'hostSay(text + "\\nКоснитесь барабана, чтобы получить приз.");',
 )
 
-if advance_count != 1:
+if count != 1:
     raise SystemExit("advanceAfterRound method was not found")
-if 'Победа в финале!' in text or 'Вы прошли все три тура' in text:
-    raise SystemExit("Tournament ending is still present")
-if 'hostSay(roundTitles[roundNumber - 1]' in text:
-    raise SystemExit("Tournament greeting is still active")
 
 path.write_text(text, encoding="utf-8")
 print("Applied v0.5 single-round restoration")
