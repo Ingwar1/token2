@@ -19,6 +19,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Apply v0.3 UI patch
+        run: |
+          git apply tools/v03-mainactivity.patch
+          sed -i "s/versionCode 2/versionCode 3/; s/versionName '0.2-original-assets'/versionName '0.3-custom-word-input'/" app/build.gradle
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -55,6 +60,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: pole-chudes-android-apk
+          name: pole-chudes-android-apk-v03
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
